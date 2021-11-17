@@ -260,10 +260,10 @@ parameters(ar4gdp.dynlm, robust = TRUE, vcov_type = "HC1")
 # AR(1) model by lm-function
 T <-length(GDPGrowth.train) # Length of observed series
 GDPGrowth.train.t <- as.numeric(GDPGrowth.train[5:T]) # Discard 1st observation 
-GDPGrowth.train.lag1 <- as.numeric(GDPGrowth.train[4:(T-1)]) # Discard last observation
-GDPGrowth.train.lag2 <- as.numeric(GDPGrowth.train[3:(T-2)]) # Discard last observation
-GDPGrowth.train.lag3 <- as.numeric(GDPGrowth.train[2:(T-3)]) # Discard last observation
-GDPGrowth.train.lag4 <- as.numeric(GDPGrowth.train[1:(T-4)]) # Discard last observation
+GDPGrowth.train.lag1 <- as.numeric(GDPGrowth.train[4:(T-1)]) # First lag
+GDPGrowth.train.lag2 <- as.numeric(GDPGrowth.train[3:(T-2)]) # Second lag
+GDPGrowth.train.lag3 <- as.numeric(GDPGrowth.train[2:(T-3)]) # Third lag
+GDPGrowth.train.lag4 <- as.numeric(GDPGrowth.train[1:(T-4)]) # Fourth lag
 ar4gdp.lm <- lm(GDPGrowth.train.t ~ GDPGrowth.train.lag1 + 
                                     GDPGrowth.train.lag2 + 
                                     GDPGrowth.train.lag3 + 
