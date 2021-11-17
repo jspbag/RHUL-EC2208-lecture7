@@ -1,0 +1,343 @@
+---
+pagetitle: Autoregressions 
+output: 
+  revealjs::revealjs_presentation:
+    incremental: false
+    theme: solarized
+    self_contained: false
+    reveal_plugins: ["notes","chalkboard"]
+    # reveal_plugins: ["menu"]
+    highlight: pygments
+    center: true
+    transition: none
+    background_transition: none 
+    reveal_options:
+      # chalkboard:
+      #   theme: whiteboard
+      #   toggleNotesButton: true
+      #   toggleChalkboardButton: true
+      menu:
+        numbers: true
+      slideNumber: true
+      previewLinks: false
+    fig_caption: true
+    pandoc_args:
+    - --indented-code-classes
+    - lineNumbers
+    css: mystyle.css
+    
+--- 
+
+<section>
+
+<h1>Autoregressions</h1>
+
+Based on Stock and Watson, ch. 15
+
+<br>
+
+<h2>[Jesper Bagger](mailto:jesper.bagger@rhul.ac.uk)</h2>
+
+<h3>EC2208 | Royal Holloway | 2021/22</h3>
+
+</section>
+
+```{r results='asis', echo=FALSE, include=FALSE}
+library(AER) # load Applied Econometrics with R library
+library(parameters) # Load parameters library for robust SE computation
+library(quantmod) # Load quantmod library for time series analysis
+library(readxl) # Load readxl to load spreadsheet data
+library(stats) # Load stats to compute acf functions
+```
+
+# Autoregressions
+
+## Autoregressive forecasts 
+
+- How to predict the future? Start with the immediate past!
+
+- Autoregression for $Y_t$ models $E(Y_t|Y_{t-1},Y_{t-2},\ldots)$
+
+  That is: an autoregression models the conditional mean of $Y_t$ as a function of its own lagged values
+  
+<!-- - An (estimated) autoregressive model for $Y_t$ allows you to forecast $Y_{T+1}$ from data on $Y_{T},Y_{T-1},\ldots,Y_{T-p}$ -->
+
+# 1st-order autoregressions
+
+## The 1st-order autoregressive model
+
+- The 1st-order autoregressive model is
+
+  $$E(Y_t|Y_{t-1},Y_{t-2},\ldots) = E(Y_t|Y_{t-1}) = \beta_0 + \beta_1 Y_{t-1},$$
+
+  where $\beta_0$ and $\beta_1$ are unknown (population) coefficients
+
+- The $AR(1)$-model is
+
+  $$Y_t = \beta_0 + \beta_1 Y_{t-1} + u_t$$
+  
+  where $u_t = Y_t - E(Y_t|Y_{t-1})$ is an error term w/ 
+  
+  $$E(u_t|Y_{t-1},Y_{t-2},\ldots) = E(u_t|Y_{t-1}) = 0$$
+
+## Estimating the $AR(1)$-model
+
+- The $AR(1)$-model is a simple regression of $Y_t$ (the dependent variable) on $Y_{t-1}$ (the regressor)
+
+- Estimate $\beta_0$ and $\beta_1$ by OLS using $(Y_t;t=1,2,\ldots,T)$
+
+- Various ways of doing that in R, including using the `lm()` function we have used thusfar
+
+## US GDP growth
+
+```{r echo=TRUE, error=FALSE, warning=FALSE, out.width = "70%"}
+# load US macroeconomic data
+usmac_qt <- read_xlsx("us_macro_quarterly.xlsx", sheet = 1, col_types = c("text", rep("numeric", 9)))
+# Fix format of date
+usmac_qt$...1 <- as.yearqtr(usmac_qt$...1, format = "%Y:0%q")
+# Relabel column names in dataframe
+colnames(usmac_qt) <- c("Date", "GDPC96", "JAPAN_IP", "PCECTPI", 
+                        "GS10", "GS1", "TB3MS", "UNRATE", "EXUSUK", "CPIAUCSL")
+# GDP series as xts object
+GDP <- xts(usmac_qt$GDPC96, usmac_qt$Date)["1960::2013"]
+# GDP growth series as xts object
+GDPGrowth <- xts(400 * log(GDP/lag(GDP)))
+# Training data
+GDPGrowth.train <- na.omit(GDPGrowth["1960::2002"]) 
+```
+
+## US GDP growth
+
+```{r echo=FALSE, error=FALSE, warning=FALSE, out.width = "70%"}
+# Plot US quarterly GDP time series
+plot(as.zoo(GDPGrowth),
+     col = "blue",
+     lwd = 1,
+     lty = "dashed",
+     ylab = "Growth Rates",
+     xlab = "Date",
+     main = "U.S. Real GDP Growth Rates")
+abline(v = 2002.75, lty = "dashed")
+lines(as.zoo(GDPGrowth.train), lwd = 2, col = "blue")
+```
+
+## $AR(1)$-model by `ar.ols()`
+
+```{r echo=TRUE, error=FALSE, warning=FALSE, out.width = "70%"}
+# AR(1) mode by ar.ols-function
+ar1gdp.arols <- ar.ols(GDPGrowth.train, order.max = 1, 
+                       demean = FALSE, intercept = TRUE)
+ar1gdp.arols # Print output to console
+```
+
+## $AR(1)$-model by `lm()`
+
+```{r echo=TRUE, error=FALSE, warning=FALSE, out.width = "70%"}
+# AR(1) model by lm-function
+T <-length(GDPGrowth.train) # Length of observed series
+GDPGrowth.train.t <- as.numeric(GDPGrowth.train[2:T]) # Discard 1st observation 
+GDPGrowth.train.lag1 <- as.numeric(GDPGrowth.train[1:(T-1)]) # Discard last observation
+ar1gdp.lm <- lm(GDPGrowth.train.t ~ GDPGrowth.train.lag1) # OLS estimation
+ar1gdp.lm # Print to console
+```
+
+## `lm()`-summary
+
+```{r echo=TRUE, error=FALSE, warning=FALSE, out.width = "70%"}
+# Summary
+summary(ar1gdp.lm)
+```
+
+## Robust standard errors
+
+```{r echo=TRUE, error=FALSE, warning=FALSE, out.width = "70%"}
+# Output w/ robust standard errors
+parameters(ar1gdp.lm, robust = TRUE, vcov_type = "HC1")
+```
+
+## One-step ahead US GDP growth forecast 
+
+$$Y_t = \underset{(0.39)}{2.35} + \underset{(0.08)}{0.30} Y_{t-1} + \hat{u}_t$$
+
+- The one-step ahead forecast for US GDP growth is
+
+  $$\hat{Y}_{T+1|T} = \underset{(0.39)}{2.35} + \underset{(0.08)}{0.30} Y_{T} $$
+
+- The forecast error is $Y_{T+1} - \hat{Y}_{T+1|T}$
+  
+## One-step ahead US GDP growth forecast  
+
+```{r echo=TRUE, error=FALSE, warning=FALSE, out.width = "70%"}
+library(forecast)
+# New dataframe with regressors for forecasting (2010:Q4 GDP growth)
+fcastdata <- data.frame(GDPGrowth.train.lag1 = as.numeric(GDPGrowth.train[T]))
+# Produce one-step ahead forecast of GDP growth for 2003:Q1
+fcast.ar1 <- forecast(ar1gdp.lm, newdata = fcastdata)
+c(as.numeric(GDPGrowth["2003"][1]),fcast.ar1$mean) # Print to console
+# Forecast error
+fcast.ar1.error <- as.numeric(GDPGrowth["2003"][1]) - fcast.ar1$mean
+fcast.ar1.error # Print to console
+```
+
+## One-step ahead US GDP growth forecast
+
+```{r echo=TRUE, error=FALSE, warning=FALSE, out.width = "70%"}
+# Produce one-step ahead forecast of GDP growth for 2003:Q1
+fcast.ar1.byhand <- ar1gdp.lm$coefficients %*% c(1, GDPGrowth.train[T])
+fcast.ar1.byhand
+```
+
+## US GDP growth and 1-step ahead $AR(1)$-forecast
+
+```{r echo=FALSE, error=FALSE, warning=FALSE, out.width = "70%"}
+# Plot US quarterly GDP time series w/ forecast
+plot(as.zoo(GDPGrowth),
+     col = "blue",
+     lwd = 1,
+     lty = "dashed",
+     ylab = "Growth Rates",
+     xlab = "Date",
+     main = "U.S. Real GDP Growth Rates")
+abline(v = 2002.75, lty = "dashed")
+lines(as.zoo(GDPGrowth.train), lwd = 2, col = "blue")
+points(2003,fcast.ar1$mean, cex = 1, col ="red")
+points(2003,GDPGrowth["2003"][1], cex = 1, col ="blue")
+legend("bottomright", inset = 0.02, c("Training series", "Realized value (2003:Q1)", "1-step-ahead forecast (2003:Q1)"),col=c("blue","blue","red"),pch=c(NA,1,1),lty=c(1,NA,NA),lwd = c(2,NA,NA))
+```
+
+# $p$th-order autoregressions
+
+## The $p$th-order autoregressive model
+
+- The 1st-order autoregressive model is
+
+  $$E(Y_t|Y_{t-1},Y_{t-2},\ldots) = E(Y_t|Y_{t-1},\ldots,Y_{t-p}) = \beta_0 + \sum_{k=1}^p \beta_k Y_{t-k},$$
+
+  where $\beta_0, \beta_1, \ldots, \beta_p$ are unknown (population) coefficients
+
+- Add error $u_t = Y_t - E(Y_t|Y_{t-1},\ldots,Y_{t-p})$ to get $AR(p)$-model:
+
+  $$Y_t = \beta_0 + \sum_{k=1}^p \beta_k Y_{t-k} + u_t.$$
+  
+
+## Estimating the $AR(p)$-model
+
+- The $AR(p)$-model is a multiple regression of $Y_t$ (dependent variable) on $Y_{t-1},\ldots,Y_{t-p}$ (regressors)
+
+- Estimate $\beta_0, \beta_1, \ldots, \beta_p$ by OLS using $(Y_t;t=1,2,\ldots,T)$
+
+- Various ways of doing that in R, including using the `lm()` function we have used thusfar
+
+
+## $AR(4)$-model for US GDP growth
+
+```{r echo=TRUE, error=FALSE, warning=FALSE, out.width = "70%"}
+library(dynlm) # Load dynlm to estimate higher-order autoregressions
+ar4gdp.dynlm <- dynlm(ts(GDPGrowth.train) ~ L(ts(GDPGrowth.train)) + 
+                                              L(ts(GDPGrowth.train), 2) + 
+                                              L(ts(GDPGrowth.train), 3) + 
+                                              L(ts(GDPGrowth.train), 4)) 
+ar4gdp.dynlm # Print to console
+```
+
+## $AR(4)$-model for US GDP growth
+
+```{r echo=TRUE, error=FALSE, warning=FALSE, out.width = "70%"}
+# Summary
+summary(ar4gdp.dynlm)
+```
+
+## $AR(4)$-model for US GDP growth
+
+```{r echo=TRUE, error=FALSE, warning=FALSE, out.width = "70%"}
+# Output w/ robust standard errors
+parameters(ar4gdp.dynlm, robust = TRUE, vcov_type = "HC1")
+```
+
+## $AR(4)$-model by `lm()`
+
+```{r echo=TRUE, error=FALSE, warning=FALSE, out.width = "70%"}
+# AR(1) model by lm-function
+T <-length(GDPGrowth.train) # Length of observed series
+GDPGrowth.train.t <- as.numeric(GDPGrowth.train[5:T]) # Discard 1st observation 
+GDPGrowth.train.lag1 <- as.numeric(GDPGrowth.train[4:(T-1)]) # Discard last observation
+GDPGrowth.train.lag2 <- as.numeric(GDPGrowth.train[3:(T-2)]) # Discard last observation
+GDPGrowth.train.lag3 <- as.numeric(GDPGrowth.train[2:(T-3)]) # Discard last observation
+GDPGrowth.train.lag4 <- as.numeric(GDPGrowth.train[1:(T-4)]) # Discard last observation
+ar4gdp.lm <- lm(GDPGrowth.train.t ~ GDPGrowth.train.lag1 + 
+                                    GDPGrowth.train.lag2 + 
+                                    GDPGrowth.train.lag3 + 
+                                    GDPGrowth.train.lag4) # OLS estimation
+ar4gdp.lm # Print to console
+```
+
+## `lm()`-summary
+
+```{r echo=TRUE, error=FALSE, warning=FALSE, out.width = "70%"}
+# Summary
+summary(ar4gdp.lm)
+```
+
+## Robust standard errors
+
+```{r echo=TRUE, error=FALSE, warning=FALSE, out.width = "70%"}
+# Output w/ robust standard errors
+parameters(ar4gdp.lm, robust = TRUE, vcov_type = "HC1")
+```
+
+
+
+## One-step ahead US GDP growth forecast 
+
+$$Y_t = \underset{(0.55)}{2.05} + \underset{(0.08)}{0.26} Y_{t-1} + \underset{(0.10)}{0.15} Y_{t-2} - \underset{(0.08)}{0.04} Y_{t-3} + \underset{(0.10)}{0.03} Y_{t-4} + \hat{u}_t$$
+
+- The one-step ahead forecast for US GDP growth is
+
+  $$\hat{Y}_{T+1|T} = \underset{(0.55)}{2.05} + \underset{(0.08)}{0.26} Y_{T} + \underset{(0.10)}{0.15} Y_{T-1} - \underset{(0.08)}{0.04} Y_{T-2} + \underset{(0.10)}{0.03} Y_{T-3} $$
+
+- The forecast error is
+
+  $$Y_{T+1} - \hat{Y}_{T+1|T}$$
+ 
+## One-step ahead US GDP growth forecast
+
+```{r echo=TRUE, error=FALSE, warning=FALSE, out.width = "70%"}
+# Produce one-step ahead forecast of GDP growth for 2003:Q1
+fcast.ar4 <- ar4gdp.dynlm$coefficients %*% c(1, GDPGrowth.train[T], GDPGrowth.train[(T-1)], GDPGrowth.train[(T-2)], GDPGrowth.train[(T-3)])
+fcast.ar4 # Print to console
+# Forecast error
+fcast.ar4.error <- as.numeric(GDPGrowth["2003"][1]) - fcast.ar4
+c(fcast.ar1.error,fcast.ar4.error) # Print to console
+```
+
+## US GDP growth and 1-step ahead $AR(4)$-forecast
+
+```{r echo=FALSE, error=FALSE, warning=FALSE, out.width = "70%"}
+# Plot US quarterly GDP time series w/ AR(1) and AR(4) forecasts
+plot(as.zoo(GDPGrowth),
+     col = "blue",
+     lwd = 1,
+     lty = "dashed",
+     ylab = "Growth Rates",
+     xlab = "Date",
+     main = "U.S. Real GDP Growth Rates")
+abline(v = 2002.75, lty = "dashed")
+lines(as.zoo(GDPGrowth.train), lwd = 2, col = "blue")
+points(2003,fcast.ar1$mean, cex = 1, col ="red")
+points(2003,fcast.ar4, cex = 1, col ="green")
+points(2003,GDPGrowth["2003"][1], cex = 1, col ="blue")
+legend("bottomright", inset = 0.02, c("Training series", "Realized value (2003:Q1)", "1-step-ahead forecast (2003:Q1), AR(1)","1-step-ahead forecast (2003:Q1), AR(4)"),col=c("blue","blue","red","green"),pch=c(NA,1,1,1),lty=c(1,NA,NA,NA),lwd = c(2,NA,NA,NA))
+```
+
+# Summary
+
+## Summary
+
+- Autoregressions predict the future using the immediate past
+
+- The order of the autoregression is the number of periods considerd in the immediate past
+
+- Estimation of autoregressions by OLS
+
+- Use estimated autoregression to forecast
+
